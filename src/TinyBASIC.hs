@@ -194,3 +194,17 @@ factor = do
     d | isDigit d -> Number <$> number
       
     
+--------------------------------------------------------------------------------
+-- Execution -------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+data Exec = Exec
+  { listing :: Map LineNumber Statement
+  , pc      :: LineNumber
+  , vars    :: Map Var Expr
+  }
+  deriving Show
+
+type Run a = StateT Exec IO a
+
+
