@@ -13,7 +13,7 @@ type Number = Word
 data LstLine
   = Lst LineNumber Stmt
   | Cmd Stmt
-  deriving Show
+  deriving(Eq,Show)
 
 data Stmt
   = PRINT [Expr]
@@ -27,7 +27,7 @@ data Stmt
   | LIST
   | RUN
   | END
-  deriving Show
+  deriving(Eq,Show)
 
 data Expr
   = Var Var
@@ -35,17 +35,17 @@ data Expr
   | Str String
   | Bin Op Expr Expr
   | Un Op Expr
-  deriving Show
+  deriving(Eq,Show)
 
 data Relop
   = Lt | Gt
   | Eq | Leq | Geq
   | Neq
-  deriving Show
+  deriving(Eq,Show)
 
 data Op
   = Add | Sub | Mul | Div
-  deriving Show
+  deriving(Eq,Show)
 
 
 

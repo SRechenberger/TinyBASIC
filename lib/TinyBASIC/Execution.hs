@@ -12,7 +12,7 @@ import qualified Data.Map as Map
 --------------------------------------------------------------------------------
 
 data Exec = Exec
-  { listing :: Map LineNumber Statement
+  { listing :: Map LineNumber Stmt
   , pc      :: LineNumber
   , vars    :: Map Var Expr
   }
