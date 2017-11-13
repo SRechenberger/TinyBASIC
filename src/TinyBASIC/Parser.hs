@@ -1,56 +1,10 @@
-module TinyBASIC where
+module TinyBASIC.Parser where
 
-import Data.Word (Word)
-import Data.Char (isUpper, isDigit)
+import TinyBASIC.Definition
+
 import Text.Parsec
 import Text.Parsec.String
-
---------------------------------------------------------------------------------
--- Definitions -----------------------------------------------------------------
---------------------------------------------------------------------------------
-
-type LineNumber = Word
-type Var = String
-type Number = Word
-
-data LstLine
-  = Lst LineNumber Stmt
-  | Cmd Stmt
-  deriving Show
-
-data Stmt
-  = PRINT [Expr]
-  | IF Expr Relop Expr Stmt
-  | GOTO Expr
-  | INPUT [Var]
-  | LET Var Expr
-  | GOSUB Expr
-  | RETURN
-  | CLEAR
-  | LIST
-  | RUN
-  | END
-  deriving Show
-
-data Expr
-  = Var Var
-  | Number Number
-  | Str String
-  | Bin Op Expr Expr
-  | Un Op Expr
-  deriving Show
-
-data Relop
-  = Lt | Gt
-  | Eq | Leq | Geq
-  | Neq
-  deriving Show
-
-data Op
-  = Add | Sub | Mul | Div
-  deriving Show
-
- 
+import Data.Char (isUpper, isDigit)
 
 --------------------------------------------------------------------------------
 -- Parser ----------------------------------------------------------------------
@@ -192,19 +146,3 @@ factor = do
     '(' -> between (char '(') (char ')') expr'
     u | isUpper u -> Var <$> var
     d | isDigit d -> Number <$> number
-      
-    
---------------------------------------------------------------------------------
--- Execution -------------------------------------------------------------------
---------------------------------------------------------------------------------
-
-data Exec = Exec
-  { listing :: Map LineNumber Statement
-  , pc      :: LineNumber
-  , vars    :: Map Var Expr
-  }
-  deriving Show
-
-type Run a = StateT Exec IO a
-
-
