@@ -93,7 +93,7 @@ statement = do
       e <- expr
       pure $ GOTO e
     "INPUT" -> do
-      vlist <- sepBy var (spaces *> try (char ','))
+      vlist <- sepBy var (spaces *> try (char ',') <* spaces)
       pure $ INPUT vlist
     "LET" -> do
       v <- upper
@@ -124,12 +124,14 @@ expr = do
 expr' :: Parser Expr
 expr' = do
   spaces
-  o <- try op <|> pure Add
+  o <- (Just <$> try op) <|> pure Nothing
   spaces
-  t <- term
+  t <- case o of
+    Nothing -> term
+    Just o  -> Un o <$> term
   spaces
   ts <- many ((,) <$> (op <* spaces) <*> (term <* spaces)) 
-  pure $ foldl (\acc (o,t) -> Bin o acc t) (if o == Add then t else Un o t) ts
+  pure $ foldl (\acc (o,t) -> Bin o acc t) t ts
 
 term :: Parser Expr
 term = do

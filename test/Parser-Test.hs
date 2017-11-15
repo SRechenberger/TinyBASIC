@@ -19,6 +19,14 @@ import Test.QuickCheck.Property (Testable)
 -- Arbitrary Instances ---------------------------------------------------------
 --------------------------------------------------------------------------------
 
+data TestCase a = TestCase String a
+  deriving (Eq, Show)
+
+instance (PP a, Arbitrary a) => Arbitrary (TestCase a) where
+  arbitrary = do
+    a <- arbitrary
+    pure $ TestCase (pp a) a
+
 instance Arbitrary LstLine where
   arbitrary = oneof
     [ Lst <$> choose (0,1000) <*> arbitrary
@@ -30,7 +38,7 @@ instance Arbitrary Stmt where
     [ PRINT <$> arbitrary
     , IF <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
     , GOTO <$> arbitrary
-    , INPUT <$> arbitrary
+    , INPUT <$> listOf ident
     , LET <$> ident <*> arbitrary
     , GOSUB <$> arbitrary
     , pure RETURN
@@ -45,13 +53,25 @@ ident = do
   l <- choose (0,10)
   (:) <$> choose ('A','Z') <*> vectorOf l (choose ('a','z'))
 
+string :: Gen String
+string = do
+  l <- choose (0,100)
+  vectorOf l (choose ('A','z'))
+
+noStr :: Gen Expr
+noStr = do
+  e <- arbitrary
+  case e of 
+    Str _ -> noStr
+    e'    -> pure e
+
 instance Arbitrary Expr where
   arbitrary = oneof
     [ Var <$> ident
     , Number <$> arbitrary
-    , Str <$> arbitrary
-    , Bin <$> arbitrary <*> arbitrary <*> arbitrary
-    , Un <$> elements [Add,Sub] <*> arbitrary
+    , Str <$> string
+    , Bin <$> arbitrary <*> noStr <*> noStr
+    , Un <$> elements [Add,Sub] <*> noStr
     ]
  
 instance Arbitrary Relop where
@@ -65,16 +85,15 @@ instance Arbitrary Op where
 -- Tests -----------------------------------------------------------------------
 --------------------------------------------------------------------------------
 
-parseCorrectly :: (Eq a, Show a) => Parser a -> a -> Bool
-parseCorrectly parser ast = case parse parser "" (show ast) of
+parseCorrectly :: (Eq a, PP a) => Parser a -> TestCase a -> Bool
+parseCorrectly parser (TestCase s ast) = case parse parser "" s of
   Right ast' -> ast == ast'
   Left _     -> False
 
 
-checkLine, checkNumber, checkVar, checkRelop, checkOp, checkStatement, checkExpr :: IO Result
+checkLine, checkNumber, checkRelop, checkOp, checkStatement, checkExpr :: IO Result
 checkLine = quickCheckResult $ parseCorrectly line
 checkNumber = quickCheckResult $ parseCorrectly number
-checkVar = quickCheckResult $ parseCorrectly var
 checkRelop = quickCheckResult $ parseCorrectly relop
 checkOp = quickCheckResult $ parseCorrectly op
 checkStatement = quickCheckResult $ parseCorrectly statement
@@ -92,5 +111,9 @@ main = do
   r <- checks  
     [ checkLine
     , checkExpr
+    , checkStatement
+    , checkNumber
+    , checkRelop
+    , checkOp
     ]
   if r then exitSuccess else exitFailure

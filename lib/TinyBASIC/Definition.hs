@@ -7,18 +7,24 @@ import Data.List (intercalate)
 -- Definitions -----------------------------------------------------------------
 --------------------------------------------------------------------------------
 
+class PP a where
+  pp :: a -> String
+
 type LineNumber = Word
 type Var = String
 type Number = Word
 
+instance PP Word where
+  pp = show
+  
 data LstLine
   = Lst LineNumber Stmt
   | Cmd Stmt
-  deriving(Eq)
+  deriving(Eq, Show)
 
-instance Show LstLine where
-  show (Lst n s) = show n ++ " " ++ show s ++ "\n"
-  show (Cmd s)   = show s ++ "\n"
+instance PP LstLine where
+  pp (Lst n s) = pp n ++ " " ++ pp s
+  pp (Cmd s)   = pp s
 
 data Stmt
   = PRINT [Expr]
@@ -32,20 +38,20 @@ data Stmt
   | LIST
   | RUN
   | END
-  deriving(Eq)
+  deriving(Eq, Show)
 
-instance Show Stmt where
-  show (PRINT es)   = "PRINT " ++ intercalate ", " (map show es) ++ "\n"
-  show (IF l o r s) = "IF " ++ show l ++ " " ++ show o ++ " " ++ show r ++ " THEN " ++ show s ++ "\n"
-  show (GOTO e)     = "GOTO " ++ show e ++ "\n"
-  show (INPUT vs)   = "INPUT " ++ intercalate ", " vs ++ "\n"
-  show (LET v e)    = "LET " ++ v ++ " = " ++ show e ++ "\n"
-  show (GOSUB e)    = "GOSUB " ++ show e ++ "\n"
-  show RETURN       = "RETURN\n"
-  show CLEAR        = "CLEAR\n"
-  show LIST         = "LIST\n"
-  show RUN          = "RUN\n"
-  show END          = "END\n"
+instance PP Stmt where
+  pp (PRINT es)   = "PRINT " ++ intercalate ", " (map pp es) 
+  pp (IF l o r s) = "IF " ++ pp l ++ " " ++ pp o ++ " " ++ pp r ++ " THEN " ++ pp s
+  pp (GOTO e)     = "GOTO " ++ pp e
+  pp (INPUT vs)   = "INPUT " ++ intercalate ", " vs
+  pp (LET v e)    = "LET " ++ v ++ " = " ++ pp e
+  pp (GOSUB e)    = "GOSUB " ++ pp e
+  pp RETURN       = "RETURN"
+  pp CLEAR        = "CLEAR"
+  pp LIST         = "LIST"
+  pp RUN          = "RUN"
+  pp END          = "END"
 
 data Expr
   = Var Var
@@ -53,36 +59,36 @@ data Expr
   | Str String
   | Bin Op Expr Expr
   | Un Op Expr
-  deriving(Eq)
+  deriving(Eq, Show)
 
-instance Show Expr where
-  show (Var v)     = v
-  show (Number n)  = show n
-  show (Str s)     = "\'" ++ s ++ "\'"
-  show (Bin o l r) = "(" ++ show l ++ " " ++ show o ++ " " ++ show r ++ ")"
-  show (Un o e)    = show o ++ show e 
+instance PP Expr where
+  pp (Var v)     = v
+  pp (Number n)  = pp n
+  pp (Str s)     = "\'" ++ s ++ "\'"
+  pp (Bin o l r) = "(" ++ pp l ++ " " ++ pp o ++ " " ++ pp r ++ ")"
+  pp (Un o e)    = "(" ++ pp o ++ pp e ++ ")"
 
 data Relop
   = Lt | Gt
   | Eq | Leq | Geq
   | Neq
-  deriving(Eq,Enum)
+  deriving(Eq,Enum, Show)
 
-instance Show Relop where
-  show Lt = "<"
-  show Gt = ">"
-  show Eq = "="
-  show Leq = "<="
-  show Geq = ">="
-  show Neq = "<>"
+instance PP Relop where
+  pp Lt = "<"
+  pp Gt = ">"
+  pp Eq = "="
+  pp Leq = "<="
+  pp Geq = ">="
+  pp Neq = "<>"
 
 data Op
   = Add | Sub | Mul | Div
-  deriving(Eq,Enum)
+  deriving(Eq,Enum,Show)
 
-instance Show Op where
-  show Add = "+"
-  show Sub = "-"
-  show Mul = "*"
-  show Div = "/"
+instance PP Op where
+  pp Add = "+"
+  pp Sub = "-"
+  pp Mul = "*"
+  pp Div = "/"
 
