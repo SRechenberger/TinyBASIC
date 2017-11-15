@@ -53,6 +53,7 @@ relop = do
     Just o2' -> case o1:o2':[] of
       "<=" -> pure Leq
       ">=" -> pure Geq
+      "<>" -> pure Neq
       o    -> fail $ "Unknown relop: " ++ show o
 
 op :: Parser Op
@@ -128,7 +129,7 @@ expr' = do
   t <- term
   spaces
   ts <- many ((,) <$> (op <* spaces) <*> (term <* spaces)) 
-  pure $ foldl (\acc (o,t) -> Bin o acc t) (Un o t) ts
+  pure $ foldl (\acc (o,t) -> Bin o acc t) (if o == Add then t else Un o t) ts
 
 term :: Parser Expr
 term = do
@@ -146,3 +147,5 @@ factor = do
     '(' -> between (char '(') (char ')') expr'
     u | isUpper u -> Var <$> var
     d | isDigit d -> Number <$> number
+    o -> fail $ "Unexpected character: " ++ show o
+    

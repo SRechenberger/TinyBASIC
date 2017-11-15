@@ -50,17 +50,17 @@ executable tinyBASIC
   default-language:
     Haskell2010
 
-test-suite test-tinyBASIC
+test-suite parser
   type:
     exitcode-stdio-1.0
   hs-source-dirs:
     test
   main-is:
-    test-tinyBASIC.hs
+    Parser-Test.hs
   build-depends:
     base,
     tinyBASIC,
-    HUnit,
+    QuickCheck,
     parsec
   default-language:
     Haskell2010
