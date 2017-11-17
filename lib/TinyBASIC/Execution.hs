@@ -166,7 +166,8 @@ execute = do
               Just (Lst l stmt) -> modify $ \s -> s
                 { listing = Map.insert l stmt (listing s) }
               Just (Cmd s)      -> command s
-              Nothing           -> modify $ \s -> s { mode = TERMINATE })
+              Nothing           -> modify $ \s -> s
+                { mode = TERMINATE })
         (\e -> liftIO $ putStrLn e)
       execute
     PROGRAM -> do
