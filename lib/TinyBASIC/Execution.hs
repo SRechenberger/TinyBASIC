@@ -1,9 +1,14 @@
 module TinyBASIC.Execution where
 
 import TinyBASIC.Definition
+import TinyBASIC.Parser
+
+import Text.Parsec (parse)
 
 import Control.Monad.State
-import Control.Monad.Error
+import Control.Monad.Except
+
+import Control.Applicative ((<|>))
 
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -21,12 +26,22 @@ data Exec = Exec
   }
   deriving Show
 
+newExec :: Exec
+newExec = Exec
+  { listing =  Map.empty
+  , pc = 0
+  , vars = Map.empty
+  , rets = []
+  , mode = COMMAND
+  }
+
 data MODE = COMMAND | PROGRAM
+  deriving(Eq, Show)
 
 type Run a = StateT Exec (ExceptT String IO) a
 
 guardNumber :: Expr -> Run Word
-guardNumber (Num n) = pure n
+guardNumber (Number n) = pure n
 guardNumber e = throwError $ "Not a number: " ++ pp e
 
 eval :: Expr -> Run Expr
@@ -59,7 +74,7 @@ eval prim = pure prim
 
 
 command :: Stmt -> Run ()
-command (PRINT es) = mapM (eval >=> (pure . show) >=> (liftIO . putStr)) es
+command (PRINT es) = mapM_ (eval >=> (pure . show) >=> (liftIO . putStr)) es
 command (IF l o r s) = do
   l' <- eval l >>= guardNumber
   r' <- eval r >>= guardNumber
@@ -80,25 +95,25 @@ command (GOTO e) = do
     modify (\s -> s {pc = e'})
 command (INPUT vs) = do
   forM_ vs $ \v -> do
-    putStr "? "
-    l <- parse ((Str <$> str) <|> (Number <$> number)) "" <$> getLine
+    liftIO $ putStr "? "
+    l <- parse ((Str <$> str) <|> (Number <$> number)) "" <$> liftIO getLine
     case l of 
-      Left e -> throwError e
-      Right i -> modify (\s -> s {vars = Map.insert v l (vars s)})
+      Left e -> throwError (show e)
+      Right i -> modify (\s -> s {vars = Map.insert v i (vars s)})
 command (LET v e) = do
   e' <- eval e
-  modify (\s -> s {vars = Map.inser v e' (vars s)})
+  modify (\s -> s {vars = Map.insert v e' (vars s)})
 command (GOSUB e) = do
   m <- gets mode
-  when (mode == PROGRAM) $ do
+  when (m == PROGRAM) $ do
     e' <- eval e >>= guardNumber
     modify (\s -> s
       { pc = e'
-      , rets = vars s + 1
+      , rets = (pc s + 1) : rets s 
       })
 command RETURN = do
   ret <- gets rets
-  case rest of
+  case ret of
     [] -> throwError "Empty return stack."
     x:xs -> modify (\s -> s
       { pc = x
@@ -108,8 +123,31 @@ command CLEAR = pure ()
 command LIST = do
   lst <- gets $ Map.toList . listing
   forM_ lst $ \(l,s) -> do
-    putStrLn $ show l ++ " " ++ pp s
+    liftIO $ putStrLn $ show l ++ " " ++ pp s
 command RUN = modify $ \s -> s { mode = PROGRAM, pc = 0 }
 command END = modify $ \s -> s { mode = COMMAND }
 
+rln :: Run LstLine
+rln = do
+  l <- liftIO getLine
+  case parse line "" l of
+    Left e -> throwError (show e)
+    Right l' -> pure l'
 
+execute :: Run ()
+execute = do
+  m <- gets mode
+  case m of
+    COMMAND -> do
+      l <- rln
+      case l of
+        Lst l stmt -> modify $ \s -> s
+          { listing = Map.insert l stmt (listing s) }
+        Cmd s -> command s
+    PROGRAM -> do
+      s <- gets $ \s -> Map.lookup (pc s) (listing s)
+      case s of
+        Nothing -> modify $ \s -> s { pc = pc s + 1 }
+        Just  s -> do
+          modify $ \s -> s { pc = pc s + 1 }
+          command s

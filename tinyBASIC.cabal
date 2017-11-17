@@ -44,7 +44,8 @@ executable tinyBASIC
   -- other-extensions:    
   build-depends:
     base        >4.8 && <4.10,
-    tinyBASIC
+    tinyBASIC,
+    mtl
   hs-source-dirs:
     src
   default-language:
