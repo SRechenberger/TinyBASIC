@@ -78,7 +78,7 @@ instance Arbitrary Relop where
   arbitrary = oneof (map pure [Lt .. Neq])
 
 instance Arbitrary Op where
-  arbitrary = oneof (map pure [Add .. Div])
+  arbitrary = oneof (map pure [Add .. Mod])
         
 
 --------------------------------------------------------------------------------
@@ -108,7 +108,7 @@ checks iors = and <$> mapM (fmap isSuccess) iors
 
 main :: IO ()
 main = do
-  r <- checks  
+  r <- checks
     [ checkLine
     , checkExpr
     , checkStatement

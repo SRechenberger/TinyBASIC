@@ -5,11 +5,14 @@ import TinyBASIC.Parser
 import TinyBASIC.Execution
 
 import System.Exit
+import System.IO
+
 import Control.Monad.State
 import Control.Monad.Except
 
 main :: IO ()
-main = do 
+main = do
+  hSetBuffering stdout LineBuffering
   r <- runExceptT $ evalStateT execute newExec
   case r of
     Left e -> do

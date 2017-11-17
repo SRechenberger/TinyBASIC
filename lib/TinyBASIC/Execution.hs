@@ -13,6 +13,8 @@ import Control.Applicative ((<|>))
 import Data.Map (Map)
 import qualified Data.Map as Map
 
+import System.IO
+import System.IO.Error
 --------------------------------------------------------------------------------
 -- Execution -------------------------------------------------------------------
 --------------------------------------------------------------------------------
@@ -35,7 +37,7 @@ newExec = Exec
   , mode = COMMAND
   }
 
-data MODE = COMMAND | PROGRAM
+data MODE = COMMAND | PROGRAM | TERMINATE
   deriving(Eq, Show)
 
 type Run a = StateT Exec (ExceptT String IO) a
@@ -61,6 +63,7 @@ eval (Bin o l r) = do
     Sub -> (-)
     Mul -> (*)
     Div -> div
+    Mod -> mod
 
 eval (Un o e) = do
   e' <- eval e >>= guardNumber
@@ -72,9 +75,16 @@ eval (Un o e) = do
 
 eval prim = pure prim
 
-
+ppAtom :: Expr -> Run String
+ppAtom (Str s) = pure s
+ppAtom (Number n) = pure $ pp n
+ppAtom e = do
+  e' <- eval e
+  ppAtom e'
 command :: Stmt -> Run ()
-command (PRINT es) = mapM_ (eval >=> (pure . show) >=> (liftIO . putStr)) es
+command (PRINT es) = do
+  mapM_ (eval >=> ppAtom >=> (liftIO . putStr)) es
+  liftIO $ putStrLn ""
 command (IF l o r s) = do
   l' <- eval l >>= guardNumber
   r' <- eval r >>= guardNumber
@@ -95,7 +105,9 @@ command (GOTO e) = do
     modify (\s -> s {pc = e'})
 command (INPUT vs) = do
   forM_ vs $ \v -> do
-    liftIO $ putStr "? "
+    liftIO $ do
+      putStr "? "
+      hFlush stdout
     l <- parse ((Str <$> str) <|> (Number <$> number)) "" <$> liftIO getLine
     case l of 
       Left e -> throwError (show e)
@@ -125,25 +137,38 @@ command LIST = do
   forM_ lst $ \(l,s) -> do
     liftIO $ putStrLn $ show l ++ " " ++ pp s
 command RUN = modify $ \s -> s { mode = PROGRAM, pc = 0 }
-command END = modify $ \s -> s { mode = COMMAND }
+command END = do
+  m <- gets mode
+  case m of
+    COMMAND -> modify $ \s -> s { mode = TERMINATE }
+    PROGRAM -> modify $ \s -> s { mode = COMMAND }
+    TERMINATE -> pure ()
 
-rln :: Run LstLine
+rln :: Run (Maybe LstLine)
 rln = do
-  l <- liftIO getLine
-  case parse line "" l of
-    Left e -> throwError (show e)
-    Right l' -> pure l'
+  l <- liftIO $ do
+    catchError
+      (Just <$> getLine)
+      (\e -> if isEOFError e then pure Nothing else throwError e)
+  case parse line "" <$> l of
+    Just (Left e) -> throwError (show e)
+    Just (Right l') -> pure $ Just l'
+    Nothing -> pure Nothing
 
 execute :: Run ()
 execute = do
   m <- gets mode
   case m of
     COMMAND -> do
-      l <- rln
-      case l of
-        Lst l stmt -> modify $ \s -> s
-          { listing = Map.insert l stmt (listing s) }
-        Cmd s -> command s
+      catchError
+        (do l <- rln
+            case l of
+              Just (Lst l stmt) -> modify $ \s -> s
+                { listing = Map.insert l stmt (listing s) }
+              Just (Cmd s)      -> command s
+              Nothing           -> modify $ \s -> s { mode = TERMINATE })
+        (\e -> liftIO $ putStrLn e)
+      execute
     PROGRAM -> do
       s <- gets $ \s -> Map.lookup (pc s) (listing s)
       case s of
@@ -151,3 +176,5 @@ execute = do
         Just  s -> do
           modify $ \s -> s { pc = pc s + 1 }
           command s
+      execute
+    TERMINATE -> pure ()

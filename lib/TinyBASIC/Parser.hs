@@ -59,12 +59,13 @@ relop = do
 op :: Parser Op
 op = do
   spaces
-  o <- oneOf "+-*/"
+  o <- oneOf "+-*/%"
   case o of
     '+' -> pure Add
     '-' -> pure Sub
     '*' -> pure Mul
     '/' -> pure Div
+    '%' -> pure Mod
     e   -> fail $ "Unkown op: " ++ show e
 
 statement :: Parser Stmt

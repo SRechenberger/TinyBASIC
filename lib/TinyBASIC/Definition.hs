@@ -83,7 +83,7 @@ instance PP Relop where
   pp Neq = "<>"
 
 data Op
-  = Add | Sub | Mul | Div
+  = Add | Sub | Mul | Div | Mod
   deriving(Eq,Enum,Show)
 
 instance PP Op where
@@ -91,4 +91,5 @@ instance PP Op where
   pp Sub = "-"
   pp Mul = "*"
   pp Div = "/"
+  pp Mod = "%"
 
