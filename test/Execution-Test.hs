@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 module Main where
 
 import Test.HUnit
@@ -12,8 +13,10 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 
 import Control.Monad.Except
+import Control.Monad.State
 
 import System.Exit
+import Control.Monad.Random.Class
 
 --------------------------------------------------------------------------------
 -- Test Suite ------------------------------------------------------------------
@@ -28,7 +31,7 @@ makeTest (str, state) = TestCase $ do
      ++ str
      ++ "\nExecution Failed."
     Right state' -> assertBool
-      ("States don't match:\n\t" 
+      ("States don't match:\n\t"
       ++ show state ++ "\n\t"
       ++ show state' ++ "\n\t")
       (state == state')
@@ -38,7 +41,11 @@ runTest str = do
   let prg = parse (many1 line) "" str
   case prg of
     Left e -> throwError (show e)
-    Right prg' -> mapM_ (\(Cmd s) -> command s) prg'
+    Right prg' ->
+      forM_ prg' $ \case
+        Cmd s -> command s
+        Lst l st -> modify
+          (\s -> s {listing = Map.insert l st (listing s)})
 
 
 --------------------------------------------------------------------------------
@@ -46,20 +53,57 @@ runTest str = do
 --------------------------------------------------------------------------------
 
 test1, test2, test3 :: (String, Exec)
-test1 = ( "LET A = 10", newExec { vars = Map.fromList [("A", Number 10)] } )
+test1 = ("LET A = 10", newExec { vars = Map.fromList [("A", Number 10)] })
 
-test2 = ( "RUN", newExec { mode = PROGRAM } )
+test2 = ("RUN", newExec { mode = PROGRAM })
 
-test3 = ( "RUN\nEND", newExec )
+test3 = ("RUN\nEND", newExec)
 
-test4 = ( "END", newExec { mode = TERMINATE } )
+test4 = ("END", newExec { mode = TERMINATE })
 
 test5 =
   ( "10 PRINT 1\n20 PRINT 2"
   , newExec
     { listing = Map.fromList
       [ (10, PRINT [Number 1] )
-      , (20, PRINT [Number 2] ) ] } )
+      , (20, PRINT [Number 2] )
+      ]
+    }
+  )
+
+gcd' :: Word -> Word -> (String, Exec)
+gcd' a b =
+  ( "10 LET A = " ++ show a ++ "\n"
+    ++ "20 LET B = " ++ show b ++ "\n"
+    ++ "30 IF B = 0 THEN GOTO 70\n"
+    ++ "40 LET H = A % B\n"
+    ++ "50 LET A = B\n"
+    ++ "60 LET B = H\n"
+    ++ "70 GOTO 30\n"
+    ++ "80 END\n"
+    ++ "RUN\n"
+    ++ "END"
+  , newExec
+    { listing = Map.fromList
+      [ (10, LET "A" (Number a))
+      , (20, LET "B" (Number b))
+      , (30, IF (Var "B") Neq (Number 0) (GOTO (Number 70)))
+      , (40, LET "H" (Bin Mod (Var "A") (Var "B")))
+      , (50, LET "A" (Var "B"))
+      , (60, LET "B" (Var "H"))
+      , (70, GOTO (Number 30))
+      , (80, END)
+      ]
+    , pc = 81
+    , vars = Map.fromList
+      [ ("A", Number $ gcd a b)
+      , ("B", Number 0)
+      , ("H", Number $ gcd a b)
+      ]
+    , rets = []
+    , mode = TERMINATE
+    }
+  )
 
 --------------------------------------------------------------------------------
 -- Main ------------------------------------------------------------------------
@@ -67,13 +111,15 @@ test5 =
 
 main :: IO ()
 main = do
-  c <- runTestTT $ test
+  -- gcdArgs <- take 1000 <$> (zip <$> getRandoms <*> getRandoms)
+  -- let gcdTest = map (makeTest . uncurry gcd') gcdArgs
+  c <- runTestTT . test $
     [ makeTest test1
     , makeTest test2
     , makeTest test3
     , makeTest test4
     , makeTest test5
-    ]
+    ] -- ++ gcdTest
   if errors c == 0 && failures c == 0
     then exitSuccess
     else exitFailure

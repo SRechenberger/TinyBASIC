@@ -45,7 +45,8 @@ executable tinyBASIC
   build-depends:
     base        >4.8 && <4.10,
     tinyBASIC,
-    mtl
+    mtl,
+    parsec
   hs-source-dirs:
     src
   default-language:
@@ -64,6 +65,7 @@ test-suite exec
     HUnit,
     parsec,
     containers,
+    MonadRandom,
     mtl
   default-language:
     Haskell2010

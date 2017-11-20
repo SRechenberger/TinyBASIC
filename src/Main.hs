@@ -12,7 +12,6 @@ import Control.Monad.Except
 
 main :: IO ()
 main = do
-  hSetBuffering stdout LineBuffering
   r <- runExceptT $ evalStateT execute newExec
   case r of
     Left e -> do
