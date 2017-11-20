@@ -26,7 +26,7 @@ data Exec = Exec
   , rets    :: [Word]
   , mode    :: MODE
   }
-  deriving Show
+  deriving (Eq, Show)
 
 newExec :: Exec
 newExec = Exec
@@ -41,6 +41,15 @@ data MODE = COMMAND | PROGRAM | TERMINATE
   deriving(Eq, Show)
 
 type Run a = StateT Exec (ExceptT String IO) a
+
+runRun :: Run a -> Exec -> IO (Either String (a, Exec))
+runRun action exec = runExceptT (runStateT action exec)
+
+evalRun :: Run a -> Exec -> IO (Either String a)
+evalRun action exec = runExceptT (evalStateT action exec)
+
+execRun :: Run a -> Exec -> IO (Either String Exec)
+execRun action exec = runExceptT (execStateT action exec)
 
 guardNumber :: Expr -> Run Word
 guardNumber (Number n) = pure n
@@ -81,6 +90,7 @@ ppAtom (Number n) = pure $ pp n
 ppAtom e = do
   e' <- eval e
   ppAtom e'
+
 command :: Stmt -> Run ()
 command (PRINT es) = do
   mapM_ (eval >=> ppAtom >=> (liftIO . putStr)) es
