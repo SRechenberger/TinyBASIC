@@ -3,7 +3,7 @@ module TinyBASIC.Execution where
 import TinyBASIC.Definition
 import TinyBASIC.Parser
 
-import Text.Parsec (parse)
+import Text.Parsec (parse, ParseError)
 
 import Control.Monad.State
 import Control.Monad.Except
@@ -91,15 +91,15 @@ ppAtom e = do
   e' <- eval e
   ppAtom e'
 
-command :: Stmt -> Run ()
+command :: Stmt -> Run MODE
 command (PRINT es) = do
   mapM_ (eval >=> ppAtom >=> (liftIO . putStr)) es
   liftIO $ putStrLn ""
+  gets mode
 command (IF l o r s) = do
   l' <- eval l >>= guardNumber
   r' <- eval r >>= guardNumber
-  when (o' l' r')
-    (command s)
+  if (o' l' r') then command s else gets mode
  where
   o' = case o of
     Lt -> (<)
@@ -109,10 +109,14 @@ command (IF l o r s) = do
     Geq -> (>=)
     Neq -> (/=)
 command (GOTO e) = do
-  mode <- gets mode
-  when (mode == PROGRAM) $ do
-    e' <- eval e >>= guardNumber
-    modify (\s -> s {pc = e'})
+  m <- gets mode
+  if (m == PROGRAM)
+    then do
+      e' <- eval e >>= guardNumber
+      modify (\s -> s {pc = e'})
+      gets mode
+    else do
+      gets mode
 command (INPUT vs) = do
   forM_ vs $ \v -> do
     liftIO $ do
@@ -122,9 +126,11 @@ command (INPUT vs) = do
     case l of 
       Left e -> throwError (show e)
       Right i -> modify (\s -> s {vars = Map.insert v i (vars s)})
+  gets mode
 command (LET v e) = do
   e' <- eval e
   modify (\s -> s {vars = Map.insert v e' (vars s)})
+  gets mode
 command (GOSUB e) = do
   m <- gets mode
   when (m == PROGRAM) $ do
@@ -133,6 +139,7 @@ command (GOSUB e) = do
       { pc = e'
       , rets = (pc s + 1) : rets s 
       })
+  gets mode
 command RETURN = do
   ret <- gets rets
   case ret of
@@ -141,52 +148,50 @@ command RETURN = do
       { pc = x
       , rets = xs
       })
-command CLEAR = pure ()
+  gets mode
+command CLEAR = gets mode
 command LIST = do
   lst <- gets $ Map.toList . listing
   forM_ lst $ \(l,s) -> do
     liftIO $ putStrLn $ show l ++ " " ++ pp s
-command RUN = modify $ \s -> s { mode = PROGRAM, pc = 0 }
+  gets mode
+command RUN = do
+  modify $ \s -> s { mode = PROGRAM, pc = 0 }
+  pure PROGRAM
 command END = do
   m <- gets mode
   case m of
-    COMMAND -> modify $ \s -> s { mode = TERMINATE }
-    PROGRAM -> modify $ \s -> s { mode = COMMAND }
-    TERMINATE -> pure ()
-
-rln :: Handle -> Run (Maybe LstLine)
-rln h = do
-  l <- liftIO $ do
-    catchError
-      (Just <$> hGetLine h)
-      (\e -> if isEOFError e then pure Nothing else throwError e)
-  case parse line "" <$> l of
-    Just (Left e) -> throwError (show e)
-    Just (Right l') -> pure $ Just l'
-    Nothing -> pure Nothing
-
-execute :: Handle -> Run ()
-execute h = do
-  m <- gets mode
-  case m of
     COMMAND -> do
-      catchError
-        (do
-          l <- rln h
-          case l of
-            Just (Lst l stmt) -> modify $ \s -> s
-              { listing = Map.insert l stmt (listing s) }
-            Just (Cmd s)      -> command s
-            Nothing           -> modify $ \s -> s
-              { mode = TERMINATE })
-        (\e -> liftIO $ putStrLn e)
-      execute h
+      modify $ \s -> s { mode = TERMINATE }
+      pure TERMINATE
     PROGRAM -> do
-      s <- gets $ \s -> Map.lookup (pc s) (listing s)
-      case s of
-        Nothing -> modify $ \s -> s { pc = pc s + 1 }
-        Just  s -> do
-          modify $ \s -> s { pc = pc s + 1 }
-          command s
-      execute h
-    TERMINATE -> pure ()
+      modify $ \s -> s { mode = COMMAND }
+      pure COMMAND
+    TERMINATE -> pure TERMINATE
+
+execute :: [Either ParseError LstLine] -> MODE -> Run ()
+execute [] _ = pure ()
+execute _ TERMINATE = pure ()
+execute (l:ls) COMMAND = do
+  m <- case l of
+    Left e -> do
+      liftIO $ putStrLn $ "Parser Error: " ++ show e
+      pure COMMAND
+    Right (Lst l stmt) -> do
+      modify $ \s -> s
+        { listing = Map.insert l stmt (listing s) }
+      pure COMMAND
+    Right (Cmd s)      -> do
+      command s
+  execute ls m
+execute ls PROGRAM = do
+  s <- gets $ \s -> Map.lookup (pc s) (listing s)
+  m <- case s of
+    Nothing -> do
+      modify $ \s -> s { pc = pc s + 1 }
+      pure PROGRAM
+    Just  s -> do
+      m' <- command s
+      modify $ \s -> s { pc = pc s + 1 }
+      pure m'
+  execute ls m

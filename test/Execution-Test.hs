@@ -26,10 +26,8 @@ import Control.Monad.Random.Class
 
 makeTest :: (String, Exec) -> Test
 makeTest (str, state) = TestCase $ do
-  (r,w) <- createPipe
-  hPutStr w str >> hFlush w >> hClose w
-  estate' <- execRun (execute r) newExec
-  hClose r
+  let prg = map (parse line "") . lines $ str
+  estate' <- execRun (execute prg COMMAND) newExec
   case estate' of
     Left _ -> do
       assertFailure
@@ -43,18 +41,6 @@ makeTest (str, state) = TestCase $ do
         ++ show state' ++ "\n\t")
         (state == state')
 
-runTest :: String -> Run ()
-runTest str = do
-  let prg = parse (many1 line) "" str
-  case prg of
-    Left e -> throwError (show e)
-    Right prg' ->
-      forM_ prg' $ \case
-        Cmd s -> command s
-        Lst l st -> modify
-          (\s -> s {listing = Map.insert l st (listing s)})
-
-
 --------------------------------------------------------------------------------
 -- Tests Cases -----------------------------------------------------------------
 --------------------------------------------------------------------------------
@@ -64,7 +50,12 @@ test1 = ("LET A = 10", newExec { vars = Map.fromList [("A", Number 10)] })
 
 test2 = ("RUN", newExec { mode = PROGRAM })
 
-test3 = ("RUN\nEND", newExec)
+test3 =
+  ("10 END\nRUN\nEND"
+  , newExec
+    { listing = Map.fromList [(10, END)]
+    , pc = 11
+    , mode = TERMINATE})
 
 test4 = ("END", newExec { mode = TERMINATE })
 
@@ -118,7 +109,7 @@ gcd' a b =
 
 main :: IO ()
 main = do
-  gcdArgs <- take 1000 <$> (zip <$> getRandoms <*> getRandoms)
+  gcdArgs <- take 10 <$> (zip <$> getRandoms <*> getRandoms)
   let gcdTest = map (makeTest . uncurry gcd') gcdArgs
   c <- runTestTT . test $
     [ makeTest test1
@@ -126,7 +117,7 @@ main = do
     , makeTest test3
     , makeTest test4
     , makeTest test5
-    ] -- ++ gcdTest
+    ] ++ gcdTest
   if errors c == 0 && failures c == 0
     then exitSuccess
     else exitFailure
