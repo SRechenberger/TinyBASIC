@@ -66,6 +66,7 @@ test-suite exec
     parsec,
     containers,
     MonadRandom,
+    process,
     mtl
   default-language:
     Haskell2010

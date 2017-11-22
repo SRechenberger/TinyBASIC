@@ -12,7 +12,7 @@ import Control.Monad.Except
 
 main :: IO ()
 main = do
-  r <- runExceptT $ evalStateT execute newExec
+  r <- runExceptT $ evalStateT (execute stdin) newExec
   case r of
     Left e -> do
       putStrLn "Execution Failed:"

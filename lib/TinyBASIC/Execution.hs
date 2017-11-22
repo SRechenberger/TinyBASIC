@@ -154,25 +154,25 @@ command END = do
     PROGRAM -> modify $ \s -> s { mode = COMMAND }
     TERMINATE -> pure ()
 
-rln :: Run (Maybe LstLine)
-rln = do
+rln :: Handle -> Run (Maybe LstLine)
+rln h = do
   l <- liftIO $ do
     catchError
-      (Just <$> getLine)
+      (Just <$> hGetLine h)
       (\e -> if isEOFError e then pure Nothing else throwError e)
   case parse line "" <$> l of
     Just (Left e) -> throwError (show e)
     Just (Right l') -> pure $ Just l'
     Nothing -> pure Nothing
 
-execute :: Run ()
-execute = do
+execute :: Handle -> Run ()
+execute h = do
   m <- gets mode
   case m of
     COMMAND -> do
       catchError
         (do
-          l <- rln
+          l <- rln h
           case l of
             Just (Lst l stmt) -> modify $ \s -> s
               { listing = Map.insert l stmt (listing s) }
@@ -180,7 +180,7 @@ execute = do
             Nothing           -> modify $ \s -> s
               { mode = TERMINATE })
         (\e -> liftIO $ putStrLn e)
-      execute
+      execute h
     PROGRAM -> do
       s <- gets $ \s -> Map.lookup (pc s) (listing s)
       case s of
@@ -188,5 +188,5 @@ execute = do
         Just  s -> do
           modify $ \s -> s { pc = pc s + 1 }
           command s
-      execute
+      execute h
     TERMINATE -> pure ()

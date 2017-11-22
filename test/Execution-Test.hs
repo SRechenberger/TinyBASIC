@@ -16,6 +16,8 @@ import Control.Monad.Except
 import Control.Monad.State
 
 import System.Exit
+import System.IO
+import System.Process
 import Control.Monad.Random.Class
 
 --------------------------------------------------------------------------------
@@ -24,17 +26,22 @@ import Control.Monad.Random.Class
 
 makeTest :: (String, Exec) -> Test
 makeTest (str, state) = TestCase $ do
-  estate' <- execRun (runTest str) newExec
+  (r,w) <- createPipe
+  hPutStr w str >> hFlush w >> hClose w
+  estate' <- execRun (execute r) newExec
+  hClose r
   case estate' of
-    Left _ -> assertFailure
-      $ "CASE:\n"
-     ++ str
-     ++ "\nExecution Failed."
-    Right state' -> assertBool
-      ("States don't match:\n\t"
-      ++ show state ++ "\n\t"
-      ++ show state' ++ "\n\t")
-      (state == state')
+    Left _ -> do
+      assertFailure
+        $ "CASE:\n"
+        ++ str
+        ++ "\nExecution Failed."
+    Right state' -> do
+      assertBool
+        ("States don't match:\n\t"
+        ++ show state ++ "\n\t"
+        ++ show state' ++ "\n\t")
+        (state == state')
 
 runTest :: String -> Run ()
 runTest str = do
@@ -111,8 +118,8 @@ gcd' a b =
 
 main :: IO ()
 main = do
-  -- gcdArgs <- take 1000 <$> (zip <$> getRandoms <*> getRandoms)
-  -- let gcdTest = map (makeTest . uncurry gcd') gcdArgs
+  gcdArgs <- take 1000 <$> (zip <$> getRandoms <*> getRandoms)
+  let gcdTest = map (makeTest . uncurry gcd') gcdArgs
   c <- runTestTT . test $
     [ makeTest test1
     , makeTest test2
