@@ -1,214 +1,167 @@
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE LambdaCase #-}
 module TinyBASIC.Execution where
+
+import Control.Lens
 
 import TinyBASIC.Definition
 import TinyBASIC.Parser
 
 import Text.Parsec (parse, ParseError)
 
-import Control.Monad.State
-import Control.Monad.Except
-
 import Control.Applicative ((<|>))
+import Control.Monad (when, (<=<))
 
 import Data.Map (Map)
 import qualified Data.Map as Map
 
-import System.IO
-import System.IO.Error
+--------------------------------------------------------------------------------
+-- Utils -----------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+for :: [a] -> (a -> b) -> [b]
+for = flip map
+
 --------------------------------------------------------------------------------
 -- Execution -------------------------------------------------------------------
 --------------------------------------------------------------------------------
 
-data Exec = Exec
-  { listing :: Map LineNumber Stmt
-  , pc      :: Word
-  , vars    :: Map Var Expr
-  , rets    :: [Word]
-  , mode    :: MODE
-  }
-  deriving (Eq, Show)
-
-newExec :: Exec
-newExec = Exec
-  { listing =  Map.empty
-  , pc = 0
-  , vars = Map.empty
-  , rets = []
-  , mode = COMMAND
-  }
-
 data MODE = COMMAND | PROGRAM | TERMINATE
   deriving(Eq, Show)
 
-type Run a = StateT Exec (ExceptT String IO) a
+data Exec = Exec
+  { _listing :: Map LineNumber Stmt
+  , _pc      :: Word
+  , _vars    :: Map Var Expr
+  , _rets    :: [Word]
+  , _mode    :: MODE
+  , _inBuf   :: [Expr]
+  , _rqInput :: Bool
+  , _screen  :: [String]
+  }
+  deriving (Eq, Show)
 
-runRun :: Run a -> Exec -> IO (Either String (a, Exec))
-runRun action exec = runExceptT (runStateT action exec)
+makeLenses ''Exec
 
-evalRun :: Run a -> Exec -> IO (Either String a)
-evalRun action exec = runExceptT (evalStateT action exec)
+newExec :: Exec
+newExec = Exec
+  { _listing =  Map.empty
+  , _pc = 0
+  , _vars = Map.empty
+  , _rets = []
+  , _mode = COMMAND
+  , _inBuf = []
+  , _rqInput = False
+  , _screen = []
+  }
 
-execRun :: Run a -> Exec -> IO (Either String Exec)
-execRun action exec = runExceptT (execStateT action exec)
 
-guardNumber :: Expr -> Run Word
-guardNumber (Number n) = pure n
-guardNumber e = throwError $ "Not a number: " ++ pp e
+processLine :: LstLine -> Exec -> Either String Exec
+processLine (Cmd stmt) exec = processStmt stmt exec
+processLine (Lst l stmt) exec = Right $ exec
+  & listing.at l ?~ stmt
 
-eval :: Expr -> Run Expr
-eval (Var v) = do
-  mv <- gets $ Map.lookup v . vars
-  case mv of
-    Nothing -> throwError $ "Variable " ++ v ++ " unbound."
-    Just v' -> pure v'
 
-eval (Bin o l r) = do
-  l' <- eval l >>= guardNumber
-  r' <- eval r >>= guardNumber
-  pure $ Number $ l' `o'` r'
+processStmt :: Stmt -> Exec -> Either String Exec
+processStmt (PRINT exprs) exec = do
+  exprs' <- mapM (pure . prn <=< eval exec) exprs
+  pure $ exec 
+    & screen %~ (concat exprs':)
  where
-  o' = case o of
-    Add -> (+)
-    Sub -> (-)
-    Mul -> (*)
-    Div -> div
-    Mod -> mod
+  prn (Str s) = s
+  prn (Number n) = show n
 
-eval (Un o e) = do
-  e' <- eval e >>= guardNumber
-  pure $ Number (o' e')
+processStmt (IF e1 op e2 s) exec = do
+  e1' <- evalNum exec e1
+  e2' <- evalNum exec e2
+  if e1' `op'` e2'
+    then processStmt s exec
+    else pure exec
  where
-  o' = case o of
-    Sub -> negate
-    Add -> id
-
-eval prim = pure prim
-
-ppAtom :: Expr -> Run String
-ppAtom (Str s) = pure s
-ppAtom (Number n) = pure $ pp n
-ppAtom e = do
-  e' <- eval e
-  ppAtom e'
-
-command :: Stmt -> Run MODE
-command (PRINT es) = do
-  mapM_ (eval >=> ppAtom >=> (liftIO . putStr)) es
-  liftIO $ putStrLn ""
-  gets mode
-command (IF l o r s) = do
-  l' <- eval l >>= guardNumber
-  r' <- eval r >>= guardNumber
-  if (o' l' r') then command s else gets mode
- where
-  o' = case o of
+  op' = case op of
     Lt -> (<)
     Gt -> (>)
-    Eq -> (==)
     Leq -> (<=)
     Geq -> (>=)
+    Eq -> (==)
     Neq -> (/=)
-command (GOTO e) = do
-  m <- gets mode
-  if (m == PROGRAM)
-    then do
-      e' <- eval e >>= guardNumber
-      modify (\s -> s {pc = e'})
-      gets mode
-    else do
-      gets mode
-command (INPUT vs) = do
-  forM_ vs $ \v -> do
-    liftIO $ do
-      putStr "? "
-      hFlush stdout
-    l <- parse ((Str <$> str) <|> (Number <$> number)) "" <$> liftIO getLine
-    case l of 
-      Left e -> throwError (show e)
-      Right i -> modify (\s -> s {vars = Map.insert v i (vars s)})
-  gets mode
-command (LET v e) = do
-  e' <- eval e
-  modify (\s -> s {vars = Map.insert v e' (vars s)})
-  gets mode
-command (GOSUB e) = do
-  m <- gets mode
-  when (m == PROGRAM) $ do
-    e' <- eval e >>= guardNumber
-    modify (\s -> s
-      { pc = e'
-      , rets = (pc s + 1) : rets s 
-      })
-  gets mode
-command RETURN = do
-  ret <- gets rets
-  case ret of
-    [] -> throwError "Empty return stack."
-    x:xs -> modify (\s -> s
-      { pc = x
-      , rets = xs
-      })
-  gets mode
-command CLEAR = gets mode
-command LIST = do
-  lst <- gets $ Map.toList . listing
-  forM_ lst $ \(l,s) -> do
-    liftIO $ putStrLn $ show l ++ " " ++ pp s
-  gets mode
-command RUN = do
-  modify $ \s -> s { mode = PROGRAM, pc = 0 }
-  execute'
-  gets mode
-command END = do
-  m <- gets mode
-  case m of
-    COMMAND -> do
-      modify $ \s -> s { mode = TERMINATE }
-      pure TERMINATE
-    PROGRAM -> do
-      modify $ \s -> s { mode = COMMAND }
-      pure COMMAND
-    TERMINATE -> pure TERMINATE
 
-execute :: [Either ParseError LstLine] -> MODE -> Run ()
-execute [] _ = do
-  pure ()
-execute _ TERMINATE = do
-  pure ()
-execute (l:ls) COMMAND = do
-  m <- case l of
-    Left e -> do
-      pure COMMAND
-    Right (Lst l stmt) -> do
-      modify $ \s -> s
-        { listing = Map.insert l stmt (listing s) }
-      pure COMMAND
-    Right (Cmd s)      -> do
-      command s
-  execute ls m
-{-
-execute ls PROGRAM = do
-  liftIO (putStrLn "program")
-  s <- gets $ \s -> Map.lookup (pc s) (listing s)
-  m <- case s of
-    Nothing -> do
-      modify $ \s -> s { pc = pc s + 1 }
-      pure PROGRAM
-    Just  s -> do
-      m' <- command s
-      modify $ \s -> s { pc = pc s + 1 }
-      pure m'
-  execute ls m
--}
+processStmt (GOTO e) exec = do
+  e' <- evalNum exec e
+  pure $ exec & pc .~ e'
 
-execute' :: Run ()
-execute' = do
-  m <- gets mode
-  when (m == PROGRAM) $ do
-    s <- gets $ \s -> Map.lookup (pc s) (listing s)
-    case s of
-      Nothing -> modify $ \s -> s {pc = pc s + 1}
-      Just s  -> do
-        command s
-        modify $ \s -> s {pc = pc s + 1}
-    execute'
+processStmt (INPUT idents) exec = do
+  let assgns = zip idents (exec ^. inBuf)
+  pure $ exec
+    & (\exec -> foldl (\exec (v,e) -> exec & vars.at v ?~ e) exec assgns)
+    & inBuf %~ drop (length assgns)
+    & rqInput .~ (length idents > length (exec^.inBuf))
+
+processStmt (LET v e) exec = do
+  e' <- eval exec e
+  pure $ exec
+    & vars.at v ?~ e'
+
+processStmt (GOSUB e) exec = do
+  e' <- evalNum exec e
+  pure $ exec
+    & pc .~ e'
+    & rets %~ ((exec^.pc):)
+
+processStmt RETURN exec = case exec^.rets of
+    [] -> Left "No return addresses."
+    r:rs -> pure $ exec
+      & pc .~ r
+      & rets .~ rs
+
+processStmt CLEAR exec = pure $ exec & screen .~ []
+
+processStmt LIST exec = pure $ exec
+  & screen %~ (lst ++)
+ where
+  lst :: [String]
+  lst = reverse $ for (Map.toList (exec^.listing)) (\(l,s) -> show l ++ " " ++ pp s)
+
+processStmt RUN exec = pure $ exec
+  & mode .~ PROGRAM
+
+processStmt END exec = pure $ exec
+  & mode .~ (case exec^.mode of
+      PROGRAM -> COMMAND
+      COMMAND -> TERMINATE
+      TERMINATE -> TERMINATE)
+
+
+eval :: Exec -> Expr -> Either String Expr
+eval exec e = eval' e
+ where
+  eval' (Var v) = case exec^.vars.at v of
+    Nothing -> Left $ "Variable " ++ show v ++ " not found."
+    Just e  -> pure e
+  eval' (Number n) = pure $ Number n
+  eval' (Str s)    = pure $ Str s
+  eval' (Bin o e1 e2) = do
+    e1' <- evalNum exec e1
+    e2' <- evalNum exec e2
+    let o' = case o of
+              Add -> (+)
+              Sub -> (-)
+              Mul -> (*)
+              Div -> div
+              Mod -> mod
+    pure $ Number $ e1' `o'` e2'
+  eval' (Un o e) = do
+    e' <- evalNum exec e
+    o' <- case o of
+            Add -> pure id
+            Sub -> pure negate
+            o   -> Left $ "No legal unary operator: " ++ pp o
+    pure $ Number $ o' e'
+
+
+evalNum :: Exec -> Expr -> Either String Word
+evalNum exec e = do
+  e' <- eval exec e
+  case e' of
+    Str s -> Left $ "No a number: " ++ pp e'
+    Number n -> pure n

@@ -33,6 +33,7 @@ library
     base        >4.8 && <4.10,
     parsec,
     mtl,
+    lens,
     containers
   default-language:
     Haskell2010
@@ -67,6 +68,7 @@ test-suite exec
     containers,
     MonadRandom,
     process,
+    lens,
     mtl
   default-language:
     Haskell2010

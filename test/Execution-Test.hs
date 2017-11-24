@@ -14,6 +14,7 @@ import qualified Data.Map as Map
 
 import Control.Monad.Except
 import Control.Monad.State
+import Control.Lens
 
 import System.Exit
 import System.IO
@@ -24,84 +25,70 @@ import Control.Monad.Random.Class
 -- Test Suite ------------------------------------------------------------------
 --------------------------------------------------------------------------------
 
-makeTest :: (String, Exec) -> Test
-makeTest (str, state) = TestCase $ do
-  let prg = map (parse line "") . lines $ str
-  estate' <- execRun (execute prg COMMAND) newExec
-  case estate' of
-    Left _ -> do
-      assertFailure
-        $ "CASE:\n"
-        ++ str
-        ++ "\nExecution Failed."
-    Right state' -> do
-      assertBool
-        ("States don't match:\n\t"
-        ++ show state ++ "\n\t"
-        ++ show state' ++ "\n\t")
-        (state == state')
+runAutomatically :: [LstLine] -> Exec -> Either String Exec
+runAutomatically [] exec = pure exec
+runAutomatically prg@(l:ls) exec = case exec^.mode of
+  COMMAND -> do
+    exec' <- processLine l exec
+    runAutomatically ls exec'
+  PROGRAM -> case exec^.listing.at (exec^.pc) of
+      Nothing -> runAutomatically prg (exec & pc +~ 1)
+      Just l  -> do
+        exec' <- processStmt l exec
+        pure $ exec' & pc +~ 1
+  TERMINATE -> pure exec
+
+makeTest :: String -> Exec -> Exec -> Test
+makeTest str execInit execExp = TestCase $ do
+  let prg = parse (many line) "" str
+  case prg of
+    Left err -> assertFailure $
+      "Parse Error: " ++ show err
+    Right prg' -> case runAutomatically prg' execInit of
+      Left err -> assertFailure $ 
+        "Execution Error: " ++ err
+      Right exec' -> assertBool
+        ("States do not match: "
+         ++ "expected: \n"
+         ++ "  " ++ show execExp ++ "\n"
+         ++ "got: \n"
+         ++ "  " ++ show exec')
+        (execExp == exec')
 
 --------------------------------------------------------------------------------
 -- Tests Cases -----------------------------------------------------------------
 --------------------------------------------------------------------------------
 
-test1, test2, test3 :: (String, Exec)
-test1 = ("LET A = 10", newExec { vars = Map.fromList [("A", Number 10)] })
-
-test2 = ("10 END\nRUN", newExec { mode = PROGRAM })
-
-test3 =
-  ("10 END\nRUN\nEND"
-  , newExec
-    { listing = Map.fromList [(10, END)]
-    , pc = 11
-    , mode = TERMINATE})
-
-test4 = ("END", newExec { mode = TERMINATE })
-
-test5 =
-  ( "10 PRINT 1\n20 PRINT 2"
-  , newExec
-    { listing = Map.fromList
-      [ (10, PRINT [Number 1] )
-      , (20, PRINT [Number 2] )
-      ]
-    }
-  )
-
-gcd' :: Word -> Word -> (String, Exec)
-gcd' a b =
-  ( "10 LET A = " ++ show a ++ "\n"
-    ++ "20 LET B = " ++ show b ++ "\n"
-    ++ "30 IF B = 0 THEN GOTO 70\n"
-    ++ "40 LET H = A % B\n"
-    ++ "50 LET A = B\n"
-    ++ "60 LET B = H\n"
-    ++ "70 GOTO 30\n"
-    ++ "80 END\n"
-    ++ "RUN\n"
-    ++ "END"
-  , newExec
-    { listing = Map.fromList
-      [ (10, LET "A" (Number a))
-      , (20, LET "B" (Number b))
-      , (30, IF (Var "B") Neq (Number 0) (GOTO (Number 70)))
-      , (40, LET "H" (Bin Mod (Var "A") (Var "B")))
-      , (50, LET "A" (Var "B"))
-      , (60, LET "B" (Var "H"))
-      , (70, GOTO (Number 30))
-      , (80, END)
-      ]
-    , pc = 81
-    , vars = Map.fromList
-      [ ("A", Number $ gcd a b)
-      , ("B", Number 0)
-      , ("H", Number $ gcd a b)
-      ]
-    , rets = []
-    , mode = TERMINATE
-    }
-  )
+singleStatement :: Test
+singleStatement = TestLabel "Single Statement" $
+  TestList $
+    [ makeTest
+        "PRINT 'Hello World'"
+        newExec
+        (newExec & screen .~ ["Hello World"])
+    , makeTest
+        "GOTO 10"
+        newExec
+        (newExec & pc .~ 10)
+    , makeTest
+        "LET X = 10"
+        newExec
+        (newExec & vars.at "X" ?~ Number 10)
+    , makeTest
+        "INPUT X"
+        (newExec & inBuf .~ [Number 10])
+        (newExec & vars.at "X" ?~ Number 10)
+    , makeTest
+        "INPUT X"
+        newExec
+        (newExec & rqInput .~ True)
+    , makeTest
+        "INPUT X, Y"
+        (newExec & inBuf .~ [Number 10])
+        (newExec
+          & vars.at "X" ?~ Number 10
+          & rqInput .~ True)
+    ]
 
 --------------------------------------------------------------------------------
 -- Main ------------------------------------------------------------------------
@@ -109,15 +96,7 @@ gcd' a b =
 
 main :: IO ()
 main = do
-  gcdArgs <- take 10 <$> (zip <$> getRandoms <*> getRandoms)
-  let gcdTest = map (makeTest . uncurry gcd') gcdArgs
-  c <- runTestTT . test $
-    [ makeTest test1
-    , makeTest test2
-    , makeTest test3
-    , makeTest test4
-    , makeTest test5
-    ]-- ++ gcdTest
+  c <- runTestTT singleStatement
   if errors c == 0 && failures c == 0
     then exitSuccess
     else exitFailure
