@@ -157,7 +157,8 @@ command LIST = do
   gets mode
 command RUN = do
   modify $ \s -> s { mode = PROGRAM, pc = 0 }
-  pure PROGRAM
+  execute'
+  gets mode
 command END = do
   m <- gets mode
   case m of
@@ -170,12 +171,13 @@ command END = do
     TERMINATE -> pure TERMINATE
 
 execute :: [Either ParseError LstLine] -> MODE -> Run ()
-execute [] _ = pure ()
-execute _ TERMINATE = pure ()
+execute [] _ = do
+  pure ()
+execute _ TERMINATE = do
+  pure ()
 execute (l:ls) COMMAND = do
   m <- case l of
     Left e -> do
-      liftIO $ putStrLn $ "Parser Error: " ++ show e
       pure COMMAND
     Right (Lst l stmt) -> do
       modify $ \s -> s
@@ -184,7 +186,9 @@ execute (l:ls) COMMAND = do
     Right (Cmd s)      -> do
       command s
   execute ls m
+{-
 execute ls PROGRAM = do
+  liftIO (putStrLn "program")
   s <- gets $ \s -> Map.lookup (pc s) (listing s)
   m <- case s of
     Nothing -> do
@@ -195,3 +199,16 @@ execute ls PROGRAM = do
       modify $ \s -> s { pc = pc s + 1 }
       pure m'
   execute ls m
+-}
+
+execute' :: Run ()
+execute' = do
+  m <- gets mode
+  when (m == PROGRAM) $ do
+    s <- gets $ \s -> Map.lookup (pc s) (listing s)
+    case s of
+      Nothing -> modify $ \s -> s {pc = pc s + 1}
+      Just s  -> do
+        command s
+        modify $ \s -> s {pc = pc s + 1}
+    execute'
