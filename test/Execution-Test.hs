@@ -35,7 +35,7 @@ runAutomatically prg@(l:ls) exec = case exec^.mode of
       Nothing -> runAutomatically prg (exec & pc +~ 1)
       Just l  -> do
         exec' <- processStmt l exec
-        pure $ exec' & pc +~ 1
+        runAutomatically prg (exec' & pc +~ 1)
   TERMINATE -> pure exec
 
 makeTest :: String -> Exec -> Exec -> Test
@@ -90,13 +90,29 @@ singleStatement = TestLabel "Single Statement" $
           & rqInput .~ True)
     ]
 
+listings :: Test
+listings = TestLabel "Listings" $ 
+  TestList $
+    [ makeTest
+        "10 PRINT 'Hello World'\n20 END\n RUN\nEND"
+        newExec
+        (newExec
+          & pc .~ 21
+          & listing .~
+              Map.fromList
+                [(10, PRINT [Str "Hello World"])
+                ,(20, END)]
+          & mode .~ TERMINATE
+          & screen .~ ["Hello World"])]
+
+
 --------------------------------------------------------------------------------
 -- Main ------------------------------------------------------------------------
 --------------------------------------------------------------------------------
 
 main :: IO ()
 main = do
-  c <- runTestTT singleStatement
+  c <- runTestTT $ test [singleStatement, listings]
   if errors c == 0 && failures c == 0
     then exitSuccess
     else exitFailure
