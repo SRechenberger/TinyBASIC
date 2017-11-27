@@ -67,6 +67,7 @@ test-suite exec
     parsec,
     containers,
     MonadRandom,
+    random,
     process,
     lens,
     mtl
