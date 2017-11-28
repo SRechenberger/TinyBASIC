@@ -123,6 +123,7 @@ processStmt LIST exec = pure $ exec
   lst = reverse $ for (Map.toList (exec^.listing)) (\(l,s) -> show l ++ " " ++ pp s)
 
 processStmt RUN exec = pure $ exec
+  & pc .~ 0
   & mode .~ PROGRAM
 
 processStmt END exec = pure $ exec

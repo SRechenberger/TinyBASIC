@@ -22,6 +22,9 @@ data LstLine
   | Cmd Stmt
   deriving(Eq, Show)
 
+instance PP a => PP [a] where
+  pp xs = intercalate "\n" (map pp xs)
+
 instance PP LstLine where
   pp (Lst n s) = pp n ++ " " ++ pp s
   pp (Cmd s)   = pp s

@@ -37,11 +37,12 @@ fib = fib' 0 1
 --------------------------------------------------------------------------------
 
 runAutomatically :: [LstLine] -> Exec -> Either String Exec
-runAutomatically [] exec = pure exec
-runAutomatically prg@(l:ls) exec = case exec^.mode of
-  COMMAND -> do
-    exec' <- processLine l exec
-    runAutomatically ls exec'
+runAutomatically prg exec = case exec^.mode of
+  COMMAND -> case prg of
+    [] -> pure exec
+    l:ls -> do
+      exec' <- processLine l exec
+      runAutomatically ls exec'
   PROGRAM -> case exec^.listing.at (exec^.pc) of
       Nothing -> runAutomatically prg (exec & pc +~ 1)
       Just l  -> do
@@ -202,7 +203,7 @@ listings = TestLabel "Listings" $
           & vars .~
               Map.fromList
                 [ ("A", Number $ fib i), ("B", Number $ fib (i+1)), ("N", Number 0), ("Tmp", Number $ fib (i+1)) ])
-    , makeRandomTest1 1
+    , makeRandomTest1 1000
         getRandom
         (\i ->
           "10 INPUT X\n"

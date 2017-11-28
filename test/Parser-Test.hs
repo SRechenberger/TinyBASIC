@@ -4,7 +4,7 @@ import Data.List (intercalate)
 
 import System.Exit (exitFailure, exitSuccess)
 
-import Text.Parsec (parse)
+import Text.Parsec (parse, many)
 import Text.Parsec.String (Parser)
 
 import TinyBASIC.Definition
@@ -97,6 +97,7 @@ checkRelop = quickCheckResult $ parseCorrectly relop
 checkOp = quickCheckResult $ parseCorrectly op
 checkStatement = quickCheckResult $ parseCorrectly statement
 checkExpr = quickCheckResult $ parseCorrectly expr
+checkLines = quickCheckResult $ parseCorrectly (many line)
 
 --------------------------------------------------------------------------------
 -- Main ------------------------------------------------------------------------
@@ -114,5 +115,6 @@ main = do
     , checkNumber
     , checkRelop
     , checkOp
+    , checkLines
     ]
   if r then exitSuccess else exitFailure
