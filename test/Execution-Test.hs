@@ -55,7 +55,8 @@ makeTest input initState expectedState = TestCase $ do
   let prg = parse (many line) "" input
   case prg of
     Left err -> assertFailure $
-      "Parse Error: " ++ show err
+      "Parse Error: " ++ show err ++ "\n"
+      ++ "Program:\n" ++ input
     Right prg' -> case runAutomatically prg' initState of
       Left err -> assertFailure $ 
         "Execution Error: " ++ err
@@ -71,12 +72,14 @@ makeTest input initState expectedState = TestCase $ do
 makeRandomTest1 :: (Random a) => Int -> IO a -> (a -> String) -> (a -> Exec) -> (a -> Exec) -> Test
 makeRandomTest1 n gen inputGen initStateGen expectedStateGen = TestList $ replicate n $ TestCase $ do
   rand1 <- gen
-  let prg = parse (many line) "" (inputGen rand1)
+  let input = inputGen rand1
+  let prg = parse (many line) "" input
   let initState = initStateGen rand1
   let expectedState = expectedStateGen rand1
   case prg of
     Left err -> assertFailure $
-      "Parse Error: " ++ show err
+      "Parse Error: " ++ show err ++ "\n"
+      ++ "Program:\n" ++ input
     Right prg' -> case runAutomatically prg' initState of
       Left err -> assertFailure $ 
         "Execution Error: " ++ err
@@ -93,12 +96,14 @@ makeRandomTest2 :: (Random a, Random b) => IO a -> IO b -> (a -> b -> String) ->
 makeRandomTest2 gen1 gen2 inputGen initStateGen expectedStateGen = TestCase $ do
   rand1 <- gen1
   rand2 <- gen2
-  let prg = parse (many line) "" (inputGen rand1 rand2)
+  let input = inputGen rand1 rand2
+  let prg = parse (many line) "" input
   let initState = initStateGen rand1 rand2
   let expectedState = expectedStateGen rand1 rand2
   case prg of
     Left err -> assertFailure $
-      "Parse Error: " ++ show err
+      "Parse Error: " ++ show err ++ "\n"
+      ++ "Program:\n" ++ input
     Right prg' -> case runAutomatically prg' initState of
       Left err -> assertFailure $ 
         "Execution Error: " ++ err
@@ -197,15 +202,15 @@ listings = TestLabel "Listings" $
           & vars .~
               Map.fromList
                 [ ("A", Number $ fib i), ("B", Number $ fib (i+1)), ("N", Number 0), ("Tmp", Number $ fib (i+1)) ])
-    , makeRandomTest1 1000
+    , makeRandomTest1 1
         getRandom
         (\i ->
           "10 INPUT X\n"
-          "20 PRINT X\n"
-          "30 END\n"
-          "RUN\n"
-          "RUN\n"
-          "RUN\n")
+          ++ "20 PRINT X\n"
+          ++ "30 END\n"
+          ++ "RUN\n"
+          ++ "RUN\n"
+          ++ "RUN\n")
         (\i -> newExec & inBuf .~ [Number i, Number (i+2), Number (i+4)])
         (\i -> newExec
           & pc .~ 31
@@ -215,7 +220,7 @@ listings = TestLabel "Listings" $
                 , (20, PRINT [Var "X"])
                 , (30, END)]
           & mode .~ COMMAND
-          & screen .~ [Number $ show (i+4), Number $ show (i+2), Number $ show i]
+          & screen .~ [show (i+4), show (i+2), show i]
           & vars .~ Map.fromList [("X", Number (i+4))])]
                 
 
