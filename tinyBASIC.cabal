@@ -42,7 +42,8 @@ library
 executable tinyBASIC
   main-is:
     Main.hs
-  other-modules:       
+  other-modules:
+    UI
   -- other-extensions:    
   build-depends:
     base        >4.8 && <5,
