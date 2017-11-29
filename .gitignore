@@ -1,3 +1,5 @@
+cabal.sandbox.config
+.cabal-sandbox
 .stack-work
 *.swp
 dist

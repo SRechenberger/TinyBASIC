@@ -4,14 +4,13 @@ import TinyBASIC.Definition
 import TinyBASIC.Parser
 import TinyBASIC.Execution
 
-import System.Exit
-import System.IO
+import UI
+import Brick
+import qualified Brick.Widgets.Edit as Edit
 
-import Control.Monad.State
-import Control.Monad.Except
-import Text.Parsec
+import System.Exit
 
 main :: IO ()
 main = do
-  putStrLn "Fuck You!"
-  exitFailure
+  defaultMain app (UIState newExec (Edit.editor () Nothing ""))
+  pure ()
